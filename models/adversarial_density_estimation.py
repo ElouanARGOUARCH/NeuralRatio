@@ -78,7 +78,7 @@ class AdversarialDensityEstimator(nn.Module):
         network.pop()
         self.logit_r = nn.Sequential(*network).to(self.device)
         self.optimizer_discrimator = torch.optim.Adam(self.logit_r.parameters(), lr=5e-3)
-        self.reference = RealNVP(self.p, [16,16,16]).to(self.device)
+        self.reference = RealNVP(self.p, [256,256,256]).to(self.device)
         self.reference.estimate_moments(self.target_samples)
         self.optimizer_reference = torch.optim.Adam(self.reference.parameters(), lr= 5e-3)
         self.to(self.device)
@@ -99,7 +99,6 @@ class AdversarialDensityEstimator(nn.Module):
         loss_values = [torch.mean(self.loss(self.target_samples)).item()]
         best_loss = loss_values[0]
         best_iteration = 0
-        best_parameters = self.state_dict()
         pbar = tqdm(range(epochs))
         for t in pbar:
             perm = torch.randperm(self.num_samples)
@@ -109,18 +108,20 @@ class AdversarialDensityEstimator(nn.Module):
                 batch_loss_discriminator = self.loss(self.target_samples[perm][i * batch_size:min((i + 1) * batch_size, self.num_samples)])
                 batch_loss_discriminator.backward()
                 self.optimizer_discrimator.step()
+
                 self.optimizer_reference.zero_grad()
                 batch_loss_reference = - self.loss(self.target_samples[perm][i * batch_size:min((i + 1) * batch_size, self.num_samples)])
                 batch_loss_reference.backward()
                 self.optimizer_reference.step()
+
             iteration_loss = torch.mean(self.loss(self.target_samples)).item()
             loss_values.append(iteration_loss)
             pbar.set_postfix_str('loss = ' + str(iteration_loss))
             if iteration_loss < best_loss:
                 best_loss = iteration_loss
                 best_iteration = t + 1
-                best_parameters = self.state_dict()
-        self.load_state_dict(best_parameters)
+                #best_parameters = self.state_dict()
+        #self.load_state_dict(best_parameters)
         self.train_visual(best_loss, best_iteration, loss_values)
 
     def train_visual(self, best_loss, best_iteration, loss_values):
