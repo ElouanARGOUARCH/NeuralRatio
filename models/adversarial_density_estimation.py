@@ -83,7 +83,6 @@ class AdversarialDensityEstimator(nn.Module):
         self.optimizer_reference = torch.optim.Adam(self.reference.parameters(), lr= 5e-3)
         self.to(self.device)
 
-
     def log_density(self, x):
         return self.logit_r(x).squeeze(-1) + self.reference.log_prob(x)
 

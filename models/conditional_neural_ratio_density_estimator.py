@@ -1,15 +1,11 @@
 import torch
 from torch import nn
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-from utils.color_visual import *
-from matplotlib.ticker import MaxNLocator
-from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
-
 
 class CNDRE(nn.Module):
     def __init__(self, x_samples, theta_samples, hidden_dims, mode = 'Proxy'):
         super().__init__()
+
         self.p = x_samples.shape[-1]
         self.d = theta_samples.shape[-1]
         self.x_samples = x_samples
@@ -23,7 +19,7 @@ class CNDRE(nn.Module):
             network.extend([nn.Linear(h0, h1), nn.Sigmoid(), ])
         network.pop()
         self.logit_r = nn.Sequential(*network)
-        self.optimizer = torch.optim.Adam(self.logit_r.parameters(), lr=1e-3)
+
         self.mode = mode
         if self.mode == 'Proxy':
             if self.p >= 2:
@@ -32,6 +28,8 @@ class CNDRE(nn.Module):
                 cov = torch.var(self.x_samples, dim=0) * torch.eye(self.p)
             self.reference = torch.distributions.multivariate_normal.MultivariateNormal(
                 torch.mean(self.x_samples, dim=0), cov)
+
+        self.loss_values = []
 
     def loss(self, x, theta):
         log_sigmoid = torch.nn.LogSigmoid()
@@ -44,74 +42,38 @@ class CNDRE(nn.Module):
         return -torch.mean(log_sigmoid(self.logit_r(true)) + log_sigmoid(-self.logit_r(fake)))
 
     def log_density(self,x, t):
+        assert self.mode == 'Proxy', "log_density requires Proxy mode"
         logit_r = self.logit_r(torch.cat([x, t], dim=-1)).squeeze(-1)
-        if self.mode =='Proxy':
-            return logit_r + self.reference.log_prob(x)
-        elif self.mode == 'Ratio':
-            return logit_r
+        return logit_r + self.reference.log_prob(x)
 
-    def model_visual(self):
-        if self.p==1 and self.d==1:
-            fig = plt.figure(figsize=(8, 5))
-            ax = fig.add_subplot()
-            ax.set_xlabel('theta')
-            ax.set_ylabel('x')
-            delta = 500
-            x_tt = torch.linspace(torch.min(self.x_samples), torch.max(self.theta_samples), delta)
-            theta_tt = torch.linspace(torch.min(self.theta_samples), torch.max(self.theta_samples), delta)
-            ax.pcolormesh(x_tt,theta_tt,torch.exp(self.log_density(x_tt.unsqueeze(-1).unsqueeze(1).repeat(1, delta, 1), theta_tt.unsqueeze(-1).unsqueeze(0).repeat(delta, 1, 1))).detach().numpy(), cmap = blue_cmap)
+    def log_ratio(self,x,t):
+        assert self.mode == 'Ratio', "log_ratio requires Ratio mode"
+        return self.logit_r(torch.cat([x, t], dim=-1)).squeeze(-1)
 
     def train(self, epochs, batch_size):
-        loss_values = [self.loss(self.x_samples, self.theta_samples).item()]
-        best_loss = loss_values[0]
-        best_iteration = 0
-        best_parameters = self.state_dict()
+        self.para_list = list(self.parameters())
+
+        self.optimizer = torch.optim.Adam(self.para_list, lr=5e-3)
+        if batch_size is None:
+            batch_size = self.target_samples.shape[0]
+        dataset = torch.utils.data.TensorDataset(self.theta_samples, self.x_samples)
+
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.to(device)
+
         pbar = tqdm(range(epochs))
         for t in pbar:
-            perm = torch.randperm(self.num_samples)
-            for i in range(int(self.num_samples / batch_size) + 1 * (
-                    int(self.num_samples / batch_size) != self.num_samples / batch_size)):
+            dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+            for i, batch in enumerate(dataloader):
+                theta = batch[0].to(device)
+                x = batch[1].to(device)
                 self.optimizer.zero_grad()
-                batch_loss = self.loss(self.x_samples[perm][i * batch_size:min((i + 1) * batch_size, self.num_samples)],
-                                       self.theta_samples[perm][i * batch_size:min((i + 1) * batch_size, self.num_samples)])
+                batch_loss = self.loss(x, theta)
                 batch_loss.backward()
                 self.optimizer.step()
-            iteration_loss = self.loss(self.x_samples, self.theta_samples).item()
-            loss_values.append(iteration_loss)
-            pbar.set_postfix_str('loss = ' + str(iteration_loss))
-            if iteration_loss < best_loss:
-                best_loss = iteration_loss
-                best_iteration = t + 1
-                best_parameters = self.state_dict()
-        self.load_state_dict(best_parameters)
-        self.train_visual(best_loss, best_iteration, loss_values)
-
-    def train_visual(self, best_loss, best_iteration, loss_values):
-        fig = plt.figure(figsize=(12, 4))
-        ax = plt.subplot(111)
-        Y1, Y2 = best_loss - (max(loss_values) - best_loss) / 2, max(loss_values) + (max(loss_values) - best_loss) / 4
-        ax.set_ylim(Y1, Y2)
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        ax.plot(loss_values, label='Loss values during training', color='black')
-        ax.scatter([best_iteration], [best_loss], color='black', marker='d')
-        ax.axvline(x=best_iteration, ymax=(best_loss - best_loss + (max(loss_values) - best_loss) / 2) / (
-                    max(loss_values) + (max(loss_values) - best_loss) / 4 - best_loss + (
-                        max(loss_values) - best_loss) / 2), color='black', linestyle='--')
-        ax.text(0, best_loss - (max(loss_values) - best_loss) / 8,
-                'best iteration = ' + str(best_iteration) + '\nbest loss = ' + str(np.round(best_loss, 5)),
-                verticalalignment='top', horizontalalignment='left', fontsize=12)
-        if len(loss_values) > 30:
-            x1, x2 = best_iteration - int(len(loss_values) / 15), min(best_iteration + int(len(loss_values) / 15),
-                                                                      len(loss_values) - 1)
-            k = len(loss_values) / (2.5 * (x2 - x1 + 1))
-            offset = (Y2-Y1)/(6*k)
-            y1, y2 = best_loss - offset, best_loss + offset
-            axins = zoomed_inset_axes(ax, k, loc='upper right')
-            axins.axvline(x=best_iteration, ymax=(best_loss - y1) / (y2-y1), color='black', linestyle='--')
-            axins.scatter([best_iteration], [best_loss], color='black', marker='d')
-            axins.xaxis.set_major_locator(MaxNLocator(integer=True))
-            axins.plot(loss_values, color='black')
-            axins.set_xlim(x1 - .5, x2 + .5)
-            axins.set_ylim(y1, y2)
-            mark_inset(ax, axins, loc1=3, loc2=4)
+            with torch.no_grad():
+                iteration_loss = torch.tensor([self.loss(batch[1].to(device),batch[0].to(device)) for i, batch in enumerate(dataloader)]).mean().item()
+            self.loss_values.append(iteration_loss)
+            pbar.set_postfix_str('loss = ' + str(round(iteration_loss,6)))
+        self.to(torch.device('cpu'))
 
