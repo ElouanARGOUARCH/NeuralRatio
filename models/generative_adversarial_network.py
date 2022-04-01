@@ -1,10 +1,6 @@
 import torch
 from torch import nn
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-from utils.color_visual import *
-from matplotlib.ticker import MaxNLocator
-from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
 
 class GenerativeAdversarialNetwork(nn.Module):
     def __init__(self, target_samples, latent_dim, networks_dims):
