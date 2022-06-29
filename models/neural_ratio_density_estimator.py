@@ -24,15 +24,30 @@ class NDRE(nn.Module):
             torch.mean(self.target_samples, dim=0), cov)
 
         self.loss_values=[]
+        self.log_constant = None
 
     def log_density(self, x):
-        return self.logit_r(x).squeeze(-1) + self.reference.log_prob(x)
+        return self.log_density_ratio(x) + self.reference.log_prob(x)
+
+    def log_density_ratio(self,x):
+        return self.logit_r(x).squeeze(-1)
+
+    def estimate_constant(self):
+        cat = torch.cat([self.target_samples, self.reference.sample([self.target_samples.shape[0]])], dim =0)
+        self.log_constant = torch.max(self.log_density_ratio(cat))
+
+    def sample(self, num_samples):
+        if self.log_constant is None:
+            print('estimating rejection sampling constant')
+            self.estimate_constant()
+        fake = self.reference.sample([num_samples])
+        log_density_ratios = self.log_density_ratio(fake)
+        accepted = torch.log(torch.rand(num_samples)) < log_density_ratios - self.log_constant
+        return fake[accepted]
 
     def loss(self, X):
         log_sigmoid = torch.nn.LogSigmoid()
-        true = X
-        fake = self.reference.sample(X.shape[:-1])
-        return -torch.mean(log_sigmoid(self.logit_r(true))+log_sigmoid(-self.logit_r(fake)))
+        return -torch.mean(log_sigmoid(self.logit_r(X))+log_sigmoid(-self.logit_r(self.reference.sample(X.shape[:-1]))))
 
     def train(self, epochs, batch_size = None):
         self.para_list = list(self.parameters())
