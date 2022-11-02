@@ -2,18 +2,16 @@ import torch
 from torch import nn
 from tqdm import tqdm
 
-class BinaryClassifier(nn.Module):
+class EvenBinaryClassifier(nn.Module):
     def __init__(self, label_1_samples, label_0_samples, hidden_dims):
         super().__init__()
 
         self.label_1_samples = label_1_samples
-        self.N = label_1_samples.shape[0]
         self.label_0_samples = label_0_samples
-        self.M = label_0_samples.shape[0]
+        assert label_0_samples.shape[0]==label_1_samples.shape[0], 'mismatch in number of samples'
+        self.N = label_1_samples.shape[0]
         assert label_0_samples.shape[-1]==label_1_samples.shape[-1], 'mismatch in samples dimensions'
         self.p = label_0_samples.shape[-1]
-        self.target_samples = torch.cat([label_0_samples, label_1_samples], dim = 0)
-        self.labels = torch.tensor([0]*self.M + [1]*self.N)
 
         network_dimensions = [self.p] + hidden_dims + [1]
         network = []
@@ -27,35 +25,36 @@ class BinaryClassifier(nn.Module):
 
     def loss(self, label_1_batch, label_0_batch):
         log_sigmoid = torch.nn.LogSigmoid()
-        return -torch.sum(log_sigmoid(self.logit_r(label_1_batch)))-torch.sum(log_sigmoid(-self.logit_r(label_0_batch)))
+        return -torch.mean(log_sigmoid(self.logit_r(label_1_batch)) + log_sigmoid(-self.logit_r(label_0_batch)))
 
     def log_density_ratio(self,x):
-        return self.logit_r(x).squeeze(-1) + torch.log(torch.tensor([self.M/self.N]))
+        return self.logit_r(x).squeeze(-1)
 
-    def train(self, epochs, batch_size = None):
+    def train(self, epochs, batch_size = None, lr = 1e-3):
         self.para_list = list(self.parameters())
 
-        self.optimizer = torch.optim.Adam(self.para_list, lr=5e-4)
+        self.optimizer = torch.optim.Adam(self.para_list, lr=lr)
         if batch_size is None:
             batch_size = self.label_1_samples.shape[0]
-        dataset = torch.utils.data.TensorDataset(self.target_samples, self.labels)
+        dataset_0 = torch.utils.data.TensorDataset(self.label_0_samples)
+        dataset_1 = torch.utils.data.TensorDataset(self.label_1_samples)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(device)
 
         pbar = tqdm(range(epochs))
         for t in pbar:
-            dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
-            for i, batch in enumerate(dataloader):
-                labels_batch = batch[1]
-                label_1_batch = batch[0][labels_batch ==1].to(device)
-                label_0_batch = batch[0][labels_batch ==0].to(device)
+            dataloader_0 = torch.utils.data.DataLoader(dataset_0, batch_size=batch_size, shuffle=True)
+            dataloader_1 = torch.utils.data.DataLoader(dataset_1, batch_size=batch_size, shuffle=True)
+            for batch_0, batch_1 in zip(dataloader_0, dataloader_1):
+                label_0_batch = batch_0[0]
+                label_1_batch = batch_1[0]
                 self.optimizer.zero_grad()
                 batch_loss = self.loss(label_1_batch,label_0_batch)
                 batch_loss.backward()
                 self.optimizer.step()
             with torch.no_grad():
-                iteration_loss = torch.tensor([self.loss(batch[0][batch[1] ==1].to(device),batch[0][batch[1] ==0].to(device)) for i, batch in enumerate(dataloader)]).mean().item()
+                iteration_loss = torch.tensor([self.loss(batch_1[0].to(device),batch_0[0].to(device)) for batch_0, batch_1 in zip(dataloader_0, dataloader_1)]).mean().item()
             self.loss_values.append(iteration_loss)
             pbar.set_postfix_str('loss = ' + str(round(iteration_loss,6)))
         self.to(torch.device('cpu'))
