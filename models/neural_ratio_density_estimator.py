@@ -42,6 +42,9 @@ class NDRE(nn.Module):
             self.estimate_constant()
         fake = self.reference.sample([num_samples])
         log_density_ratios = self.log_density_ratio(fake)
+        print(torch.exp(-self.log_constant))
+        self.log_constant = torch.max(torch.cat([self.log_constant.unsqueeze(0), log_density_ratios]))
+        print(self.log_constant)
         accepted = torch.log(torch.rand(num_samples)) < log_density_ratios - self.log_constant
         return fake[accepted]
 
