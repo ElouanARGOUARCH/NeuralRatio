@@ -1,9 +1,9 @@
 from setuptools import setup
 
 setup(
-    name='NeuralDensityRatio',
+    name='TargetExamples',
     version='',
-    packages=['models'],
+    packages=['targets'],
     url='',
     license='',
     author='Elouan ARGOUARCH',

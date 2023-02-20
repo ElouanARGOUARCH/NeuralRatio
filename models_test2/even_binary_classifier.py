@@ -31,9 +31,7 @@ class EvenBinaryClassifier(nn.Module):
         return self.logit_r(x).squeeze(-1)
 
     def train(self, epochs, batch_size = None, lr = 1e-3):
-        self.para_list = list(self.parameters())
-
-        self.optimizer = torch.optim.Adam(self.para_list, lr=lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
         if batch_size is None:
             batch_size = self.label_1_samples.shape[0]
         dataset_0 = torch.utils.data.TensorDataset(self.label_0_samples)
@@ -47,14 +45,14 @@ class EvenBinaryClassifier(nn.Module):
             dataloader_0 = torch.utils.data.DataLoader(dataset_0, batch_size=batch_size, shuffle=True)
             dataloader_1 = torch.utils.data.DataLoader(dataset_1, batch_size=batch_size, shuffle=True)
             for batch_0, batch_1 in zip(dataloader_0, dataloader_1):
-                label_0_batch = batch_0[0]
-                label_1_batch = batch_1[0]
-                self.optimizer.zero_grad()
+                label_0_batch = batch_0[0].to(device)
+                label_1_batch = batch_1[0].to(device)
+                optimizer.zero_grad()
                 batch_loss = self.loss(label_1_batch,label_0_batch)
                 batch_loss.backward()
-                self.optimizer.step()
+                optimizer.step()
             with torch.no_grad():
                 iteration_loss = torch.tensor([self.loss(batch_1[0].to(device),batch_0[0].to(device)) for batch_0, batch_1 in zip(dataloader_0, dataloader_1)]).mean().item()
             self.loss_values.append(iteration_loss)
-            pbar.set_postfix_str('loss = ' + str(round(iteration_loss,6)))
+            pbar.set_postfix_str('loss = ' + str(round(iteration_loss,6)) + '; device = ' + str(device))
         self.to(torch.device('cpu'))

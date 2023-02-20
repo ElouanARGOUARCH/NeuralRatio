@@ -16,7 +16,7 @@ class CNDRE(nn.Module):
         network_dimensions = [self.p + self.d] + hidden_dims + [1]
         network = []
         for h0, h1 in zip(network_dimensions, network_dimensions[1:]):
-            network.extend([nn.Linear(h0, h1), nn.Sigmoid(), ])
+            network.extend([nn.Linear(h0, h1), nn.SiLU(), ])
         network.pop()
         self.logit_r = nn.Sequential(*network)
 
