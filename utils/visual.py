@@ -1,50 +1,44 @@
-import numpy as np
-from matplotlib.colors import ListedColormap
-N = 256
-orange = np.ones((N, 4))
-orange[:, 0] = np.geomspace(255 / 256, 1, N)  # R = 255
-orange[:, 1] = np.geomspace(165 / 256, 1, N)  # G = 165
-orange[:, 2] = np.geomspace(0.001 / 256, 1, N)  # B = 0
-orange_cmap = ListedColormap(orange[::-1])
+import torch
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy
 
-orange_color = "#FFA500"
+def plot_1d_unormalized_function(f,range = [-10,10], bins=100):
+    tt =torch.linspace(range[0],range[1],bins)
+    with torch.no_grad():
+        values = f(tt)
+    plot_1d_unormalized_values(values,tt)
 
-red = np.ones((N, 4))
-red[:, 0] = np.geomspace(255 / 256, 1, N)  # R = 255
-red[:, 1] = np.geomspace(0.001 / 256, 1, N)  # G = 0
-red[:, 2] = np.geomspace(0.001 / 256, 1, N)  # B = 0
-red_cmap = ListedColormap(red[::-1])
+def plot_1d_unormalized_values(values,tt):
+    x_min, x_max, bins = tt[0], tt[-1], tt.shape[0]
+    plt.plot(tt, values*bins/(torch.sum(values)*(x_max - x_min)))
 
-red_color = "#FF0000"
+def plot_2d_function(f,range = [[-10,10],[-10,10]], bins = [50,50], alpha = 0.7):
+    with torch.no_grad():
+        tt_x = torch.linspace(range[0][0], range[0][1], bins[0])
+        tt_y = torch.linspace(range[1][0],range[1][1], bins[1])
+        mesh = torch.cartesian_prod(tt_x, tt_y)
+        with torch.no_grad():
+            plt.pcolormesh(tt_x,tt_y,f(mesh).numpy().reshape(bins[0],bins[1]).T, cmap = matplotlib.cm.get_cmap('viridis'), alpha = alpha, lw = 0)
 
-blue = np.ones((N, 4))
-blue[:, 0] = np.geomspace(0.001 / 256, 1, N)  # R = 0
-blue[:, 1] = np.geomspace(0.001 / 256, 1, N)  # G = 0
-blue[:, 2] = np.geomspace(255 / 256, 1, N)  # B = 255
-blue_cmap = ListedColormap(blue[::-1])
+def plot_likelihood_function(log_likelihood, range = [[-10,10],[-10,10]], bins = [50,50], levels = 2 , alpha = 0.7):
+    with torch.no_grad():
+        tt_x = torch.linspace(range[0][0], range[0][1], bins[0])
+        tt_y = torch.linspace(range[1][0],range[1][1], bins[1])
+        tt_x_plus = tt_x.unsqueeze(0).unsqueeze(-1).repeat(tt_y.shape[0],1,1)
+        tt_y_plus = tt_y.unsqueeze(1).unsqueeze(-1).repeat(1,tt_x.shape[0], 1)
+        with torch.no_grad():
+            plt.contourf(tt_x,tt_y,torch.exp(log_likelihood(tt_y_plus, tt_x_plus)), levels = levels, cmap = matplotlib.cm.get_cmap('viridis'), alpha = alpha, lw = 0)
 
-blue_color = "#0000FF"
+def plot_2d_points(samples):
+    plt.scatter(samples[:,0], samples[:,1])
 
-green = np.ones((N, 4))
-green[:, 0] = np.geomspace(0.001 / 256, 1, N)  # R = 0
-green[:, 1] = np.geomspace(128 / 256, 1, N)  # G = 128
-green[:, 2] = np.geomspace(0.001 / 256, 1, N)  # B = 128
-green_cmap = ListedColormap(green[::-1])
-
-green_color = "#008000"
-
-pink = np.ones((N, 4))
-pink[:, 0] = np.geomspace(255 / 256, 1, N)  # R = 255
-pink[:, 1] = np.geomspace(0.001 / 256, 1, N)  # G = 0
-pink[:, 2] = np.geomspace(211 / 256, 1, N)  # B = 211
-pink_cmap = ListedColormap(pink[::-1])
-
-pink_color = "#FF00D3"
-
-purple = np.ones((N, 4))
-purple[:, 0] = np.geomspace(51 / 256, 1, N)  # R = 102
-purple[:, 1] = np.geomspace(0.001 / 256, 1, N)  # G = 0
-purple[:, 2] = np.geomspace(51 / 256, 1, N)  # B = 102
-purple_cmap = ListedColormap(purple[::-1])
-
-purple_color = "#660066"
+def plot_image_2d_points(samples, bins=(200, 200), range=None, figsize=(12, 8)):
+    assert samples.shape[-1] == 2, 'Requires 2-dimensional points'
+    fig = plt.figure(figsize=figsize)
+    hist_accepted_samples, x_edges, y_edges = numpy.histogram2d(samples[:, 1].numpy(), samples[:, 0].numpy(), bins,
+                                                                range)
+    plt.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+    plt.imshow(torch.flip(torch.flip(torch.tensor(hist_accepted_samples).T, [0, 1]), [0, 1]),
+               extent=[0, bins[1], 0, bins[0]])
+    plt.show()

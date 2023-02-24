@@ -1,1 +1,1 @@
-from .classifier import KClassifier
+from .classifier import *

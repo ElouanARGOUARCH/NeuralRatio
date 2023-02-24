@@ -22,7 +22,7 @@ class BinaryClassifier(nn.Module):
 
     def loss(self,label_0_samples,label_1_samples):
         log_sigmoid = nn.LogSigmoid()
-        return -torch.sum(log_sigmoid(self.logit_r(label_1_samples)))-torch.sum(log_sigmoid(-self.logit_r(label_0_samples)))
+        return -torch.mean(log_sigmoid(self.logit_r(label_1_samples)))-torch.mean(log_sigmoid(-self.logit_r(label_0_samples)))
 
     def train(self, epochs, lr = 5e-3):
         self.para_list = list(self.parameters())
@@ -64,7 +64,7 @@ class BinaryClassifier(nn.Module):
                 batch_loss.backward()
                 optimizer.step()
             with torch.no_grad():
-                iteration_loss = torch.tensor([self.loss(batch_1[0].to(device),batch_0[0].to(device)) for batch_0, batch_1 in zip(dataloader_0, dataloader_1)]).sum().item()
+                iteration_loss = torch.tensor([self.loss(batch_1[0].to(device),batch_0[0].to(device)) for batch_0, batch_1 in zip(dataloader_0, dataloader_1)]).mean().item()
             self.loss_values.append(iteration_loss)
             pbar.set_postfix_str('loss = ' + str(round(iteration_loss,6)) + '; device = ' + str(device))
         self.to(torch.device('cpu'))
@@ -88,7 +88,7 @@ class KClassifier(nn.Module):
         return temp - torch.logsumexp(temp, dim = -1, keepdim=True)
 
     def loss(self, samples,labels):
-        return -torch.sum((self.log_prob(samples))[range(samples.shape[0]), labels])
+        return -torch.mean((self.log_prob(samples))[range(samples.shape[0]), labels])
 
     def train(self, epochs, lr = 5e-3):
         optimizer = torch.optim.Adam(self.parameters(), lr=lr)
@@ -121,7 +121,7 @@ class KClassifier(nn.Module):
                 loss.backward()
                 optimizer.step()
             with torch.no_grad():
-                iteration_loss = torch.tensor([self.loss(batch[0].to(device), batch[1].to(device)) for _, batch in  enumerate(dataloader)]).sum().item()
+                iteration_loss = torch.tensor([self.loss(batch[0].to(device), batch[1].to(device)) for _, batch in  enumerate(dataloader)]).mean().item()
             pbar.set_postfix_str('loss = ' + str(round(iteration_loss,4)) + '; device = ' + str(device))
         self.cpu()
 
